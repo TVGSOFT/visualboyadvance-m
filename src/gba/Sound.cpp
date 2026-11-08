@@ -98,7 +98,16 @@ static Blip_Synth<blip_best_quality, 1> pcm_synth[3]; // 32 kHz, 16 kHz, 8 kHz
 
 static inline blip_time_t blip_time()
 {
-    return SOUND_CLOCK_TICKS - soundTicks;
+    // soundTicks can briefly exceed SOUND_CLOCK_TICKS when the CPU loop takes a negative
+    // step (e.g. right after reset_apu() on save-state load), which made the time negative
+    // and tripped Blip_Synth's buffer-range assert (Crashlytics 488a18dc). Upstream vba-m
+    // reworked the time base so it can never be negative; enforce the same invariant here.
+    blip_time_t t = SOUND_CLOCK_TICKS - soundTicks;
+    if (t < 0)
+        return 0;
+    if (t > SOUND_CLOCK_TICKS)
+        return SOUND_CLOCK_TICKS;
+    return t;
 }
 
 void Gba_Pcm::init()
@@ -477,6 +486,10 @@ void soundShutdown()
     delete stereo_buffer;
     stereo_buffer = 0;
 
+    // Gba_Pcm::output points into stereo_buffer; clear it so nothing writes to freed memory.
+    pcm[0].pcm.init();
+    pcm[1].pcm.init();
+
     delete gb_apu;
     gb_apu = 0;
 }
@@ -819,6 +832,17 @@ void soundReadGame(gzFile in, int version)
 
     gb_apu->load_state(state.apu);
     write_SGCNT0_H(READ16LE(&ioMem[SGCNT0_H]) & 0x770F);
+
+    // Sanitize FIFO state from the save so a corrupt state can't index past fifo[32]
+    // (ported from upstream vba-m).
+    for (int i = 0; i < 2; i++) {
+        pcm[i].readIndex &= 31;
+        pcm[i].writeIndex &= 31;
+        if (pcm[i].count < 0)
+            pcm[i].count = 0;
+        else if (pcm[i].count > 32)
+            pcm[i].count = 32;
+    }
 
     apply_muting();
 }

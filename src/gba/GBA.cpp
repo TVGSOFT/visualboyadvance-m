@@ -1593,6 +1593,11 @@ int CPULoadRom(const char* szFile)
 
 int CPULoadRomData(const char* data, int size)
 {
+    // Reject images that don't fit the fixed-size buffer below; the memcpy would overflow the heap.
+    if (data == NULL || size <= 0 || size > (cpuIsMultiBoot ? WORK_RAM_SIZE : ROM_SIZE)) {
+        return 0;
+    }
+
     romSize = ROM_SIZE;
     if (rom != NULL) {
         CPUCleanUp();
@@ -1661,7 +1666,9 @@ int CPULoadRomData(const char* data, int size)
         return 0;
     }
     
-    pix = (uint8_t*)calloc(1, 4 * 240 * 160);
+    // Must match CPULoadRom / CPUWriteState / CPUReadState (4 * 241 * 162); the 32-bit
+    // renderer writes a 241-pixel stride past line 160. Crashlytics 6626f25b.
+    pix = (uint8_t*)calloc(1, 4 * 241 * 162);
     if (pix == NULL) {
         systemMessage(MSG_OUT_OF_MEMORY, N_("Failed to allocate memory for %s"),
             "PIX");
