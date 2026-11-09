@@ -654,6 +654,11 @@ void soundShutdown()
     delete stereo_buffer;
     stereo_buffer = 0;
 
+    // Gba_Pcm::output points into stereo_buffer; clear it so a later apply_control/update
+    // can never write through the freed buffer (Delta iOS fix).
+    pcm[0].pcm.init();
+    pcm[1].pcm.init();
+
     delete gb_apu;
     gb_apu = 0;
 }

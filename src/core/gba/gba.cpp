@@ -2700,6 +2700,11 @@ void doMirroring(bool b)
             memcpy((uint16_t*)(g_rom + mirroredRomAddress), (uint16_t*)(g_rom), mirroredRomSize);
             mirroredRomAddress += mirroredRomSize;
         }
+        // Data reads are bounded by gbaGetRomSize() (gbaInline.h); extend it over the mirrored
+        // area so the copies above are actually visible to the game instead of the open-bus
+        // pattern (Delta iOS fix for Classic NES Series, which depends on ROM mirroring).
+        if (romSize < 0x01000000)
+            romSize = 0x01000000;
     }
 }
 
